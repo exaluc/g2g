@@ -90,7 +90,9 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         print(f"Processing {repo_name} with path parts: {repo_path_parts}")
 
         if group:
-            repo_path_parts = [group] + repo_path_parts
+            group_parts = group.split("/")
+            if all(x not in repo_path_parts for x in group_parts):
+                repo_path_parts = group_parts + repo_path_parts
             print(f"Group specified. Updated path parts: {repo_path_parts}")
 
         parent_id = None

@@ -28,7 +28,8 @@ def download(api_url, token, group, output_file, clean_all):
 
     group_info = download_group_repos(api_url, group, token)
     timestamp = datetime.now().strftime('%Y%m%d')
-    backup_file_name = f"migration_{group}_{timestamp}.json"
+    group_for_filename = group.replace("/", "_")
+    backup_file_name = f"migration_{group_for_filename}_{timestamp}.json"
 
     with open(backup_file_name, 'w') as f:
         json.dump({"group_info": group_info}, f)
