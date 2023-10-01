@@ -1,0 +1,135 @@
+import requests
+import json
+import urllib.parse
+import os
+from git import Repo
+from git.exc import InvalidGitRepositoryError
+
+
+def download_group_repos(api_url, group, token):
+    group_info = {}
+    page = 1
+
+    while True:
+        response = requests.get(f"{api_url}/groups/{urllib.parse.quote_plus(group)}/projects", headers={"Private-Token": token}, params={"per_page": 100, "page": page})
+        if response.status_code != 200:
+            print(f"Failed to get projects for group {group}. Response: {response.text}")
+            return group_info
+
+        projects = json.loads(response.text)
+        if not projects:
+            break
+
+        for project in projects:
+            repo_url = project['http_url_to_repo']
+            repo_name = project['name']
+
+            repo_url_parts = list(urllib.parse.urlsplit(repo_url))
+            repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(repo_url).netloc}"
+            repo_url_with_token = urllib.parse.urlunsplit(repo_url_parts)
+
+            print(f"Cloning {repo_name}...")
+            Repo.clone_from(repo_url_with_token, f"{group}/{repo_name}")
+            group_info[repo_name] = {"url": repo_url, "path": f"{group}/{repo_name}"}
+
+        page += 1
+    download_subgroups(api_url, group, token, group_info)
+    return group_info
+
+def download_subgroups(api_url, parent_group, token, group_info):
+    page = 1
+    while True:
+        response = requests.get(f"{api_url}/groups/{urllib.parse.quote_plus(parent_group)}/subgroups", headers={"Private-Token": token}, params={"per_page": 100, "page": page})
+        if response.status_code != 200:
+            print(f"Failed to get subgroups for group {parent_group}. Response: {response.text}")
+            return
+
+        subgroups = json.loads(response.text)
+        if not subgroups:
+            break
+
+        for subgroup in subgroups:
+            subgroup_name = subgroup['name']
+            subgroup_path = subgroup['full_path']
+            print(f"Downloading subgroup {subgroup_name}")
+
+            os.makedirs(subgroup_path, exist_ok=True)
+            subgroup_info = download_group_repos(api_url, subgroup_path, token)
+            
+            group_info.update(subgroup_info)
+
+        page += 1
+
+def create_or_get_group(api_url, token, group_name, parent_id=None):
+    params = {}
+    if parent_id:
+        params['parent_id'] = parent_id
+    response = requests.get(f"{api_url}/groups", headers={"Private-Token": token}, params=params)
+    if response.status_code == 200:
+        groups = json.loads(response.text)
+        for group in groups:
+            if group['name'] == group_name:
+                return group['id']
+
+    payload = {"name": group_name, "path": group_name}
+    if parent_id:
+        payload['parent_id'] = parent_id
+
+    response = requests.post(f"{api_url}/groups", headers={"Private-Token": token}, json=payload)
+    if response.status_code == 201:
+        return json.loads(response.text)['id']
+    else:
+        print(f"Failed to create group {group_name}. Response: {response.text}")
+        return None
+
+
+
+def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
+    for repo_name, repo_data in repo_info['group_info'].items():
+        repo_path_parts = repo_data['path'].split("/")
+        print(f"Processing {repo_name} with path parts: {repo_path_parts}")
+
+        if group:
+            repo_path_parts = [group] + repo_path_parts
+            print(f"Group specified. Updated path parts: {repo_path_parts}")
+
+        parent_id = None
+        for part in repo_path_parts[:-1]:
+            print(f"Creating or getting group: {part}")
+            parent_id = create_or_get_group(api_url, token, part, parent_id)
+            if parent_id is None:
+                return
+            print(f"Group {part} created or fetched with ID: {parent_id}")
+
+        payload = {"name": repo_path_parts[-1]}
+        
+        if parent_id:
+            payload['namespace_id'] = parent_id
+
+        print(f"Creating new project: {repo_path_parts[-1]} under parent ID: {parent_id}")
+
+        response = requests.post(f"{api_url}/projects", headers={"Private-Token": token}, json=payload)
+        if response.status_code == 201:
+            new_repo_url = json.loads(response.text)['http_url_to_repo']
+
+            new_repo_url_parts = list(urllib.parse.urlsplit(new_repo_url))
+            new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(new_repo_url).netloc}"
+            new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
+
+            repo = Repo(repo_data['path'])
+            origin = repo.remote('origin')
+            origin.set_url(new_repo_url_with_token)
+            origin.push(all=True)
+            print(f"Successfully created and pushed to {new_repo_url}")
+        else:
+            print(f"Failed to create project {repo_name}. Response: {response.text}")
+
+def find_git_repos(path, repo_info):
+    for folder in os.listdir(path):
+        folder_path = os.path.join(path, folder)
+        if os.path.isdir(folder_path):
+            try:
+                if Repo(folder_path).git_dir:
+                    repo_info[folder] = {"path": folder_path}
+            except InvalidGitRepositoryError:
+                find_git_repos(folder_path, repo_info)
