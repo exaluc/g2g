@@ -175,6 +175,7 @@ Successfully created and pushed to https://new.instance.localhost/mloops/devops-
 
 ### Additional Options:
 
+- `--token TEXT` The GitLab Private Token for CI/CD
 - `--output-file` to specify the JSON file for saving repo information.
 - `--input-file` to specify the JSON file for reading repo information.
 - `--clean-all` to remove all existing repos before download.
