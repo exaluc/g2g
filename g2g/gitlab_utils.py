@@ -70,8 +70,18 @@ def create_or_get_group(api_url, token, group_name, parent_id=None):
         for group in groups:
             if group['name'] == group_name:
                 return group['id']
+    
+    # Check for existence under the parent group, if parent_id is given
+    if parent_id:
+        response = requests.get(f"{api_url}/groups/{parent_id}/subgroups", headers={"Private-Token": token})
+        if response.status_code == 200:
+            subgroups = json.loads(response.text)
+            for subgroup in subgroups:
+                if subgroup['name'] == group_name:
+                    return subgroup['id']
 
-    payload = {"name": group_name, "path": group_name}
+    sanitized_group_name = group_name.replace(" ", "_").replace("-", "_").lower()
+    payload = {"name": group_name, "path": sanitized_group_name}
     if parent_id:
         payload['parent_id'] = parent_id
 
@@ -81,8 +91,6 @@ def create_or_get_group(api_url, token, group_name, parent_id=None):
     else:
         print(f"Failed to create group {group_name}. Response: {response.text}")
         return None
-
-
 
 def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
     for repo_name, repo_data in repo_info['group_info'].items():
@@ -103,12 +111,13 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
                 return
             print(f"Group {part} created or fetched with ID: {parent_id}")
 
-        payload = {"name": repo_path_parts[-1]}
+        sanitized_repo_name = repo_name.replace(" ", "_").replace("-", "_").lower()
+        payload = {"name": repo_name, "path": sanitized_repo_name}
         
         if parent_id:
             payload['namespace_id'] = parent_id
 
-        print(f"Creating new project: {repo_path_parts[-1]} under parent ID: {parent_id}")
+        print(f"Creating new project: {repo_name} under parent ID: {parent_id}")
 
         response = requests.post(f"{api_url}/projects", headers={"Private-Token": token}, json=payload)
         if response.status_code == 201:
