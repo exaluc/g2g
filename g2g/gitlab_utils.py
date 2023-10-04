@@ -122,18 +122,25 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         response = requests.post(f"{api_url}/projects", headers={"Private-Token": token}, json=payload)
         if response.status_code == 201:
             new_repo_url = json.loads(response.text)['http_url_to_repo']
-
-            new_repo_url_parts = list(urllib.parse.urlsplit(new_repo_url))
-            new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(new_repo_url).netloc}"
-            new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
-
-            repo = Repo(repo_data['path'])
-            origin = repo.remote('origin')
-            origin.set_url(new_repo_url_with_token)
-            origin.push(all=True)
-            print(f"Successfully created and pushed to {new_repo_url}")
         else:
-            print(f"Failed to create project {repo_name}. Response: {response.text}")
+            print(f"Failed to create project {repo_name}. Trying to fetch existing one. Response: {response.text}")
+            # Fetch the existing project URL
+            existing_project_response = requests.get(f"{api_url}/projects/{urllib.parse.quote_plus(repo_name)}", headers={"Private-Token": token})
+            if existing_project_response.status_code != 200:
+                print(f"Failed to get existing project {repo_name}. Response: {existing_project_response.text}")
+                continue
+            new_repo_url = json.loads(existing_project_response.text)['http_url_to_repo']
+        
+        # Use new_repo_url to set the remote URL
+        new_repo_url_parts = list(urllib.parse.urlsplit(new_repo_url))
+        new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(new_repo_url).netloc}"
+        new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
+
+        repo = Repo(repo_data['path'])
+        origin = repo.remote('origin')
+        origin.set_url(new_repo_url_with_token)
+        origin.push(all=True)
+        print(f"Successfully created and pushed to {new_repo_url}")
 
 def find_git_repos(path, repo_info):
     for folder in os.listdir(path):
