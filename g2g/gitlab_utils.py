@@ -4,7 +4,7 @@ import urllib.parse
 import os
 from git import Repo
 from git.exc import InvalidGitRepositoryError
-
+from git import GitCommandError
 
 def download_group_repos(api_url, group, token):
     group_info = {}
@@ -140,20 +140,17 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         origin = repo.remote('origin')
         origin.set_url(new_repo_url_with_token)
 
-        for branch in repo.branches:
-            try:
-                # Set up tracking for branches not tracking any remote branch
-                if branch.tracking_branch() is None:
-                    refspec = f'refs/heads/{branch.name}:refs/heads/{branch.name}'
-                    origin.push(refspec=refspec)
-                else:
-                    # Push branches already tracking a remote branch
-                    origin.push(branch.name)
-                
-                print(f"Pushed branch {branch.name}")
+        # Fetch all branches
+        repo.git.fetch('--all')
 
-            except Exception as e:
-                print(f"Error pushing branch {branch.name}: {e}")
+        # Push each local branch
+        for branch in repo.branches:
+            branch_name = branch.name
+            try:
+                print(f"Pushing branch: {branch_name}")
+                origin.push(refspec=f'{branch_name}:{branch_name}')
+            except GitCommandError as e:
+                print(f"Failed to push branch {branch_name}: {e}")
 
 
 
