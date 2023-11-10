@@ -87,6 +87,11 @@ def create_or_get_group(api_url, token, group_name, parent_id=None):
                 if subgroup['name'] == group_name:
                     return subgroup['id']
 
+    response = requests.get(f"{api_url}/groups/{urllib.parse.quote_plus(group_name)}", headers={"Private-Token": token})
+    if response.status_code == 200:
+        group_data = json.loads(response.text)
+        return group_data['id']
+
     sanitized_group_name = group_name.replace(" ", "_").replace("-", "_").lower()
     payload = {"name": group_name, "path": sanitized_group_name}
     if parent_id:
