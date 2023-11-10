@@ -137,20 +137,20 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
 
         repo = Repo(repo_data['path'])
-        origin = repo.remote('origin')
-        origin.set_url(new_repo_url_with_token)
+        try:
+            # Set the new remote URL
+            repo.git.remote('set-url', 'origin', new_repo_url_with_token)
 
-        # Fetch all branches
-        repo.git.fetch('--all')
+            # Push all branches
+            print(f"Pushing all branches of {repo_name} to {new_repo_url_with_token}")
+            repo.git.push('origin', '--all')
+            print(f"Successfully pushed all branches of {repo_name}")
 
-        # Push each local branch
-        for branch in repo.branches:
-            branch_name = branch.name
-            try:
-                print(f"Pushing branch: {branch_name}")
-                origin.push(refspec=f'{branch_name}:{branch_name}')
-            except GitCommandError as e:
-                print(f"Failed to push branch {branch_name}: {e}")
+            # Optionally, push tags as well
+            repo.git.push('origin', '--tags')
+        except GitCommandError as e:
+            print(f"Failed to push repository {repo_name}: {e}")
+
 
 
 
