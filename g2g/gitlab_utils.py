@@ -136,18 +136,26 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(new_repo_url).netloc}"
         new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
 
-        repo = Repo(repo_data['path'])
-        try:
-            # Set the new remote URL
-            repo.git.remote('set-url', 'origin', new_repo_url_with_token)
+        repo_path = repo_data['path']
+        repo = Repo(repo_path)
 
-            # Push all branches
+        # Construct new remote URL with the token
+        new_repo_url_parts = list(urllib.parse.urlsplit(repo_data['url']))
+        new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(repo_data['url']).netloc}"
+        new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
+
+        # Add new remote
+        new_remote_name = "new-origin"
+        repo.create_remote(new_remote_name, url=new_repo_url_with_token)
+
+        # Push all branches to the new remote
+        try:
             print(f"Pushing all branches of {repo_name} to {new_repo_url_with_token}")
-            repo.git.push('origin', '--all')
+            repo.git.push(new_remote_name, '--all')
             print(f"Successfully pushed all branches of {repo_name}")
 
             # Optionally, push tags as well
-            repo.git.push('origin', '--tags')
+            repo.git.push(new_remote_name, '--tags')
         except GitCommandError as e:
             print(f"Failed to push repository {repo_name}: {e}")
 
