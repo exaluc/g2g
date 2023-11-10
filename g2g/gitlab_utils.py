@@ -29,7 +29,7 @@ def download_group_repos(api_url, group, token):
             repo_url_with_token = urllib.parse.urlunsplit(repo_url_parts)
 
             print(f"Cloning {repo_name}...")
-            Repo.clone_from(repo_url_with_token, f"{group}/{repo_name}")
+            Repo.clone_from(repo_url_with_token, f"{group}/{repo_name}", no_single_branch=True)
             group_info[repo_name] = {"url": repo_url, "path": f"{group}/{repo_name}"}
 
         page += 1
@@ -139,8 +139,19 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         repo = Repo(repo_data['path'])
         origin = repo.remote('origin')
         origin.set_url(new_repo_url_with_token)
-        origin.push(all=True)
-        print(f"Successfully created and pushed to {new_repo_url}")
+
+        # Iterate through all local branches
+        for branch in repo.branches:
+            # Check if the branch is tracking a remote branch
+            if branch.tracking_branch() is None:
+                # If not, set up tracking (assuming the same branch name on remote)
+                origin.push(refspec=f'{branch.name}:{branch.name}')
+            else:
+                # If tracking, just push
+                origin.push(branch)
+
+        print(f"Successfully pushed all branches to {new_repo_url_with_token}")
+
 
 def find_git_repos(path, repo_info):
     for folder in os.listdir(path):
