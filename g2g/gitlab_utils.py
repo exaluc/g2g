@@ -2,9 +2,13 @@ import requests
 import json
 import urllib.parse
 import os
-from git import Repo
+from git import Repo, RemoteProgress
 from git.exc import InvalidGitRepositoryError
 from git import GitCommandError
+
+class MyProgressPrinter(RemoteProgress):
+    def update(self, op_code, cur_count, max_count=None, message=''):
+        print(self._cur_line)
 
 def download_group_repos(api_url, group, token):
     group_info = {}
@@ -131,31 +135,35 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
                 continue
             new_repo_url = json.loads(existing_project_response.text)['http_url_to_repo']
         
-        # Use new_repo_url to set the remote URL
-        new_repo_url_parts = list(urllib.parse.urlsplit(new_repo_url))
-        new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(new_repo_url).netloc}"
-        new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
-
         repo_path = repo_data['path']
         repo = Repo(repo_path)
 
+
         # Construct new remote URL with the token
-        new_repo_url_parts = list(urllib.parse.urlsplit(repo_data['url']))
-        new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(repo_data['url']).netloc}"
+        new_repo_url_parts = list(urllib.parse.urlsplit(new_repo_url))
+        new_repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(new_repo_url).netloc}"
         new_repo_url_with_token = urllib.parse.urlunsplit(new_repo_url_parts)
 
         # Add new remote
         new_remote_name = "new-origin"
         repo.create_remote(new_remote_name, url=new_repo_url_with_token)
 
-        # Push all branches to the new remote
-        try:
-            print(f"Pushing all branches of {repo_name} to {new_repo_url_with_token}")
-            repo.git.push(new_remote_name, '--all')
-            print(f"Successfully pushed all branches of {repo_name}")
+        # Configurer le suivi des branches pour le nouveau remote
+        for branch in repo.branches:
+            # Configurer chaque branche locale pour suivre la même branche sur le nouveau remote
+            branch_name = branch.name
+            try:
+                branch.set_tracking_branch(repo.remotes[new_remote_name].refs[branch_name])
+                print(f"Branch {branch_name} set to track {new_remote_name}/{branch_name}")
+            except IndexError:
+                print(f"Remote branch {new_remote_name}/{branch_name} does not exist. Skipping.")
 
-            # Optionally, push tags as well
-            repo.git.push(new_remote_name, '--tags')
+        # Pousser toutes les branches et tags au nouveau remote
+        try:
+            print(f"Pushing all branches and tags of {repo_name} to {new_repo_url_with_token}")
+            repo.git.push(new_remote_name, '--all', progress=MyProgressPrinter())
+            repo.git.push(new_remote_name, '--tags', progress=MyProgressPrinter())
+            print(f"Successfully pushed all branches and tags of {repo_name}")
         except GitCommandError as e:
             print(f"Failed to push repository {repo_name}: {e}")
 
