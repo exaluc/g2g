@@ -32,9 +32,12 @@ def download_group_repos(api_url, group, token):
             repo_url_parts[1] = f"oauth2:{token}@{urllib.parse.urlsplit(repo_url).netloc}"
             repo_url_with_token = urllib.parse.urlunsplit(repo_url_parts)
 
-            print(f"Cloning {repo_name}...")
-            Repo.clone_from(repo_url_with_token, f"{group}/{repo_name}", no_single_branch=True)
-            group_info[repo_name] = {"url": repo_url, "path": f"{group}/{repo_name}"}
+            try:
+                print(f"Cloning all branches of {repo_name}...")
+                repo = Repo.clone_from(repo_url_with_token, f"{group}/{repo_name}", multi_options=['--mirror'], no_single_branch=True)
+                group_info[repo_name] = {"url": repo_url, "path": f"{group}/{repo_name}"}
+            except GitCommandError as e:
+                print(f"Failed to clone {repo_name}: {e}")
 
         page += 1
     download_subgroups(api_url, group, token, group_info)
@@ -161,8 +164,8 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         # Pousser toutes les branches et tags au nouveau remote
         try:
             print(f"Pushing all branches and tags of {repo_name} to {new_repo_url_with_token}")
-            repo.git.push(new_remote_name, '--all', progress=MyProgressPrinter())
-            repo.git.push(new_remote_name, '--tags', progress=MyProgressPrinter())
+            repo.git.push(new_remote_name, '--all')
+            repo.git.push(new_remote_name, '--tags')
             print(f"Successfully pushed all branches and tags of {repo_name}")
         except GitCommandError as e:
             print(f"Failed to push repository {repo_name}: {e}")
@@ -176,7 +179,12 @@ def find_git_repos(path, repo_info):
         folder_path = os.path.join(path, folder)
         if os.path.isdir(folder_path):
             try:
-                if Repo(folder_path).git_dir:
-                    repo_info[folder] = {"path": folder_path}
+                repo = Repo(folder_path)
+                if repo.git_dir:
+                    branches = [branch.name for branch in repo.branches]
+                    repo_info[folder] = {
+                        "path": folder_path,
+                        "branches": branches
+                    }
             except InvalidGitRepositoryError:
                 find_git_repos(folder_path, repo_info)
