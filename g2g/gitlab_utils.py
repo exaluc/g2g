@@ -140,17 +140,22 @@ def create_and_upload_to_new_instance(api_url, token, repo_info, group=None):
         origin = repo.remote('origin')
         origin.set_url(new_repo_url_with_token)
 
-        # Iterate through all local branches
         for branch in repo.branches:
-            # Check if the branch is tracking a remote branch
-            if branch.tracking_branch() is None:
-                # If not, set up tracking (assuming the same branch name on remote)
-                origin.push(refspec=f'{branch.name}:{branch.name}')
-            else:
-                # If tracking, just push
-                origin.push(branch)
+            try:
+                # Set up tracking for branches not tracking any remote branch
+                if branch.tracking_branch() is None:
+                    refspec = f'refs/heads/{branch.name}:refs/heads/{branch.name}'
+                    origin.push(refspec=refspec)
+                else:
+                    # Push branches already tracking a remote branch
+                    origin.push(branch.name)
+                
+                print(f"Pushed branch {branch.name}")
 
-        print(f"Successfully pushed all branches to {new_repo_url_with_token}")
+            except Exception as e:
+                print(f"Error pushing branch {branch.name}: {e}")
+
+
 
 
 def find_git_repos(path, repo_info):
